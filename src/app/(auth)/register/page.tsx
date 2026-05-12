@@ -1,11 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import { useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { register } from "@/app/actions/auth";
 
-export default function RegisterPage() {
+function RegisterForm() {
   const [state, action, pending] = useActionState(register, undefined);
   const searchParams = useSearchParams();
   const token = searchParams.get("invite") ?? "";
@@ -71,5 +72,13 @@ export default function RegisterPage() {
         <Link href="/login" className="text-primary font-medium hover:underline">Войти</Link>
       </p>
     </form>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }
