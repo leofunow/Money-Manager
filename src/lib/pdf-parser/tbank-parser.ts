@@ -44,14 +44,23 @@ export async function parseTBankPDF(file: File): Promise<ParsedTransaction[]> {
     }
   }
 
-  console.debug("[TBank parser] raw text items:", allItems.length, allItems.slice(0, 40).map(i => `[x=${Math.round(i.x)} y=${Math.round(i.y)}] ${i.text}`));
-
   return extractTransactions(allItems);
+}
+
+// ─── Column boundaries for T-Bank "Справка о движении средств" ───────────────
+// x≈56:  operation date (DD.MM.YYYY) and time (HH:MM) on next row
+// x≈199: amount with explicit sign (+/-) and period decimal, e.g. "-459.00"
+// x≈389: description (may span multiple rows)
+const COL_DATE   = { min: 40,  max: 115 }; // x=56
+const COL_AMOUNT = { min: 185, max: 265 }; // x=199 (first amount column only)
+const COL_DESC   = { min: 375, max: 499 }; // x=389
+
+function inCol(x: number, col: { min: number; max: number }) {
+  return x >= col.min && x < col.max;
 }
 
 function groupByY(items: TextItem[], tolerance = 5): Array<TextItem[]> {
   const rows: Array<{ y: number; items: TextItem[] }> = [];
-
   for (const item of items) {
     const existing = rows.find((r) => Math.abs(r.y - item.y) <= tolerance);
     if (existing) {
@@ -60,193 +69,118 @@ function groupByY(items: TextItem[], tolerance = 5): Array<TextItem[]> {
       rows.push({ y: item.y, items: [item] });
     }
   }
-
   return rows
     .sort((a, b) => a.y - b.y)
     .map((r) => r.items.sort((a, b) => a.x - b.x));
 }
 
-const DATE_RE = /^\d{2}\.\d{2}\.\d{4}$/;
-const TIME_RE = /^\d{2}:\d{2}(:\d{2})?$/;
-// Both "1 200,00" (Russian) and "1 200.00" (international) formats
-const AMOUNT_RE = /^[-+]?\s*[\d\s]+[,.]\d{2}$/;
-const DATE_IN_TEXT_RE = /\b(\d{2})\.(\d{2})\.(\d{4})\b/;
+const DATE_RE    = /^\d{2}\.\d{2}\.\d{4}$/;
+// T-Bank amounts: explicit + or - sign, space thousands sep, period decimal
+// e.g. "-459.00", "-2 000.00", "+1 657 344.41"
+const SIGNED_AMOUNT_RE = /^[+-][\d\s]+\.\d{2}$/;
 
-// Russian month names
-const MONTHS_RU: Record<string, string> = {
-  "января": "01", "янв": "01",
-  "февраля": "02", "фев": "02",
-  "марта": "03", "мар": "03",
-  "апреля": "04", "апр": "04",
-  "мая": "05", "май": "05",
-  "июня": "06", "июн": "06",
-  "июля": "07", "июл": "07",
-  "августа": "08", "авг": "08",
-  "сентября": "09", "сен": "09", "сент": "09",
-  "октября": "10", "окт": "10",
-  "ноября": "11", "ноя": "11", "нояб": "11",
-  "декабря": "12", "дек": "12",
-};
-const DATE_RU_RE = new RegExp(
-  `\\b(\\d{1,2})\\s+(${Object.keys(MONTHS_RU).join("|")})\\.?\\s*(\\d{4})?\\b`,
-  "i"
-);
-
-function isDate(s: string) { return DATE_RE.test(s.trim()); }
-function isTime(s: string) { return TIME_RE.test(s.trim()); }
-function isAmount(s: string) { return AMOUNT_RE.test(s.trim().replace(/\s/g, "")); }
-function isSystemText(s: string) {
-  return (
-    isDate(s) || isTime(s) || isAmount(s) ||
-    /^[+-]?\s*\d[\d\s]*$/.test(s) ||
-    s.length <= 1
-  );
+function parseDate(s: string): string | null {
+  const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
 function parseAmount(s: string): number {
-  // "1 200,00" → 1200.00  |  "1 200.00" → 1200.00
-  const clean = s.replace(/\s/g, "");
-  // If comma is decimal separator: "1200,00"
-  if (/,\d{2}$/.test(clean)) {
-    return parseFloat(clean.replace(/[^0-9,]/g, "").replace(",", ".")) || 0;
-  }
-  // If period is decimal separator: "1200.00"
-  if (/\.\d{2}$/.test(clean)) {
-    return parseFloat(clean.replace(/[^0-9.]/g, "")) || 0;
-  }
-  return parseFloat(clean.replace(/[^0-9]/g, "")) || 0;
+  // "-2 000.00" → 2000.00
+  return parseFloat(s.replace(/\s/g, "").replace(/[^0-9.]/g, "")) || 0;
 }
-
-function parseDate(s: string): string | null {
-  // DD.MM.YYYY
-  const m = s.match(DATE_IN_TEXT_RE);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-
-  // "27 октября 2024" or "27 окт 2024"
-  const mr = s.match(DATE_RU_RE);
-  if (mr) {
-    const day = mr[1].padStart(2, "0");
-    const month = MONTHS_RU[mr[2].toLowerCase()];
-    const year = mr[3] ?? new Date().getFullYear().toString();
-    if (month) return `${year}-${month}-${day}`;
-  }
-
-  return null;
-}
-
-// Detect "summary/balance" rows that should not be treated as transactions
-const SUMMARY_RE = /^(остаток|баланс|итого|всего|сальдо|входящий|исходящий|opening|closing)/i;
 
 function extractTransactions(allItems: TextItem[]): ParsedTransaction[] {
   const rows = groupByY(allItems);
   const seen = new Set<string>();
   const transactions: ParsedTransaction[] = [];
 
-  // Find date-anchor rows
-  const dateRowIndices: number[] = [];
+  // A row is a transaction anchor iff it has:
+  //   1. A DD.MM.YYYY date in the date column (x≈56)
+  //   2. A signed amount (+/-) in the amount column (x≈199)
+  // This precisely excludes header rows (no amount) and summary rows (amount at x=126, not x=199)
+  const anchorIndices: number[] = [];
   for (let i = 0; i < rows.length; i++) {
-    const rowText = rows[i].map(it => it.text).join(" ");
-    if (rows[i].some((it) => isDate(it.text) || DATE_IN_TEXT_RE.test(it.text)) ||
-        DATE_RU_RE.test(rowText)) {
-      // Skip obvious header/summary rows
-      if (!SUMMARY_RE.test(rowText)) {
-        dateRowIndices.push(i);
-      }
-    }
+    const row = rows[i];
+    const hasDate   = row.some(it => inCol(it.x, COL_DATE)   && DATE_RE.test(it.text));
+    const hasAmount = row.some(it => inCol(it.x, COL_AMOUNT)  && SIGNED_AMOUNT_RE.test(it.text.replace(/\s/g, "")));
+    if (hasDate && hasAmount) anchorIndices.push(i);
   }
 
-  console.debug("[TBank parser] date anchor rows:", dateRowIndices.length);
+  for (let ai = 0; ai < anchorIndices.length; ai++) {
+    const startIdx = anchorIndices[ai];
+    const endIdx   = anchorIndices[ai + 1] ?? rows.length;
+    // Collect rows belonging to this transaction (up to 8, stop at next anchor)
+    const txnRows  = rows.slice(startIdx, Math.min(startIdx + 8, endIdx));
 
-  for (let di = 0; di < dateRowIndices.length; di++) {
-    const anchorIdx = dateRowIndices[di];
-    const nextAnchorIdx = dateRowIndices[di + 1] ?? rows.length;
-    // Look at up to 8 rows per transaction to capture multi-line descriptions
-    const txnRows = rows.slice(anchorIdx, Math.min(anchorIdx + 8, nextAnchorIdx));
-
-    const allCells = txnRows.flatMap((r) => r.map((it) => it.text));
-
-    // Find date
-    let dateStr: string | null = null;
-    for (const cell of allCells) {
-      dateStr = parseDate(cell);
-      if (dateStr) break;
-    }
+    // ── Date ──────────────────────────────────────────────────────────────────
+    const dateItem = txnRows[0].find(it => inCol(it.x, COL_DATE) && DATE_RE.test(it.text));
+    if (!dateItem) continue;
+    const dateStr = parseDate(dateItem.text);
     if (!dateStr) continue;
 
-    // Skip summary rows
-    if (allCells.some(c => SUMMARY_RE.test(c))) continue;
-
-    // Find all amounts — separate debit/credit from likely balance
-    // Balance columns are usually the rightmost (largest x) and largest value
-    const amountItems = txnRows.flatMap((r) =>
-      r
-        .filter(it => AMOUNT_RE.test(it.text.replace(/\s/g, "")))
-        .map(it => ({ text: it.text, x: it.x, value: parseAmount(it.text) }))
-    ).filter(a => a.value > 0);
-
-    if (!amountItems.length) continue;
-
-    // If multiple amounts, heuristic: the balance is usually the rightmost column
-    // Use the leftmost among non-zero amounts as the transaction amount
-    const sortedByX = [...amountItems].sort((a, b) => a.x - b.x);
-    // If we have >2 amounts, skip the rightmost (likely balance)
-    const candidateAmounts = sortedByX.length > 2 ? sortedByX.slice(0, -1) : sortedByX;
-
-    // Determine sign from cell text
-    let amount = 0;
-    let type: "income" | "expense" = "expense";
-
-    const signedCell = allCells.find((c) => /^[+-]/.test(c.trim()) && AMOUNT_RE.test(c.replace(/\s/g, "")));
-    if (signedCell) {
-      amount = parseAmount(signedCell);
-      type = signedCell.trim().startsWith("+") ? "income" : "expense";
-    } else {
-      amount = candidateAmounts[0]?.value ?? amountItems[0].value;
-      const hasIncomeKeyword = allCells.some((c) =>
-        /зарплат|аванс|пополнен|cashback|кэшбэк|процент|начислен|возврат|refund|перевод.*от|зачислен/i.test(c)
-      );
-      type = hasIncomeKeyword ? "income" : "expense";
-    }
-
+    // ── Amount + type ─────────────────────────────────────────────────────────
+    const amtItem = txnRows[0].find(it => inCol(it.x, COL_AMOUNT) && SIGNED_AMOUNT_RE.test(it.text.replace(/\s/g, "")));
+    if (!amtItem) continue;
+    const amount = parseAmount(amtItem.text);
     if (amount <= 0) continue;
+    const type: "income" | "expense" = amtItem.text.trim().startsWith("+") ? "income" : "expense";
 
-    // Merchant: longest non-system cell, skipping header words
-    const skipWords = /^(дата|дебет|кредит|остаток|операция|описание|категори|сумма|бонус|баланс|статус|тип|счёт|счет|время|период|карта)$/i;
-    const merchantCandidates = allCells
-      .filter((c) => !isSystemText(c) && !skipWords.test(c.trim()) && !SUMMARY_RE.test(c))
-      .sort((a, b) => b.length - a.length);
+    // ── Description: join all items from the description column ───────────────
+    // Limit to rows within 60 y-units of the anchor to exclude page footers
+    const anchorY = txnRows[0][0]?.y ?? 0;
+    const descParts = txnRows
+      .filter(row => row[0] && (row[0].y - anchorY) < 60)
+      .flatMap(row => row.filter(it => inCol(it.x, COL_DESC)))
+      .map(it => it.text.trim())
+      .filter(Boolean);
+    const rawDesc = descParts.join(" ");
 
-    // Use the longest candidate; if none, fall back to "Транзакция"
-    const rawMerchant = merchantCandidates[0]?.trim() ?? "";
-    const merchant = cleanMerchant(rawMerchant) || `Транзакция ${dateStr}`;
+    const merchant = cleanMerchant(rawDesc) || `Транзакция ${dateStr}`;
 
-    const import_hash = hashString(`${dateStr}${amount}${rawMerchant}`);
+    const import_hash = hashString(`${dateStr}${amount}${rawDesc}`);
     if (seen.has(import_hash)) continue;
     seen.add(import_hash);
 
-    console.debug("[TBank parser] txn:", { date: dateStr, amount, type, merchant, cells: allCells });
-
-    transactions.push({
-      date: dateStr,
-      amount,
-      type,
-      description: merchant,
-      merchant_name: merchant,
-      import_hash,
-    });
+    transactions.push({ date: dateStr, amount, type, description: merchant, merchant_name: merchant, import_hash });
   }
 
   return transactions.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 function cleanMerchant(raw: string): string {
-  return raw
-    // Strip leading Russian prepositions often found in T-Bank descriptions
-    .replace(/^(в\s+|на\s+|по\s+|для\s+|от\s+)/i, "")
-    .replace(/^(оплата|перевод|покупка|списание|оплата по карте|зачисление)[:\s]*/i, "")
-    .replace(/^(ооо|оао|ип|пао|зао|nko)\s+/i, "")
-    .replace(/\*\d{2,}$/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 100);
+  let s = raw.trim();
+
+  // "Оплата в MERCHANT [City RUS]"  →  "MERCHANT"
+  // "Покупка в MERCHANT"            →  "MERCHANT"
+  // "Оплата услуг в MERCHANT"       →  "MERCHANT"
+  const inMatch = s.match(/^(?:оплата(?:\s+услуг)?|покупка|списание)\s+в\s+(.+)/i);
+  if (inMatch) {
+    s = inMatch[1];
+    // Strip trailing "City RUS" / "CITY RUS" (T-Bank appends city+country for foreign txns)
+    s = s.replace(/\s+(?:\S+\s+)?RUS$/i, "").trim();
+  } else if (/^(?:оплата)\s+услуг\s+/i.test(s)) {
+    // "Оплата услуг mBank.MTS" → "mBank.MTS"
+    s = s.replace(/^(?:оплата)\s+услуг\s+/i, "");
+  } else if (/^пополнение/i.test(s)) {
+    // "Пополнение. Система быстрых платежей" → "Пополнение СБП"
+    s = /система\s+быстрых\s+платежей|СБП/i.test(s) ? "Пополнение СБП" : s.replace(/^пополнение[.:\s]*/i, "Пополнение: ");
+  } else if (/^(?:внутрибанковский|внутренний)\s+перевод/i.test(s)) {
+    // "Внутрибанковский перевод с договора N" → "Перевод договор N"
+    s = s.replace(/^(?:внутрибанковский|внутренний)\s+перевод\s+(?:[сc]\s+|на\s+)?договора?\s*/i, "Перевод договор ");
+  } else if (/^внешний\s+перевод\s+по\s+номеру\s+телефона/i.test(s)) {
+    // "Внешний перевод по номеру телефона +7..." → "Перевод тел: +7..."
+    s = s.replace(/^внешний\s+перевод\s+по\s+номеру\s+телефона\s*/i, "Перевод тел: ");
+  }
+
+  // Strip nested "оплата " prefix (T-Bank merchant names sometimes start with it)
+  s = s.replace(/^оплата\s+/i, "");
+
+  // Strip legal form prefix
+  s = s.replace(/^(?:ооо|оао|зао|пао|ип)\s+/i, "");
+
+  // Strip card-number suffix like "*1234"
+  s = s.replace(/\*\d{2,}$/g, "");
+
+  return s.replace(/\s+/g, " ").trim().slice(0, 100);
 }
