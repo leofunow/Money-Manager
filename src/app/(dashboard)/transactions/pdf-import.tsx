@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { X, Upload, Check, AlertCircle, RefreshCw } from "lucide-react";
 import { parseTBankPDF, type ParsedTransaction } from "@/lib/pdf-parser/tbank-parser";
 import { bulkImportTransactions } from "@/app/actions/transactions";
@@ -24,6 +25,7 @@ interface PreviewRow extends ParsedTransaction {
 }
 
 export function PdfImport({ accounts, categories, onClose }: Props) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<ImportState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<PreviewRow[]>([]);
@@ -110,6 +112,8 @@ export function PdfImport({ accounts, categories, onClose }: Props) {
     }
 
     setImportedCount(result.imported ?? 0);
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["monthSpending"] });
     setState("done");
   }
 

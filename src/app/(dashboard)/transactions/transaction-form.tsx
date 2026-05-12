@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createTransaction, updateTransaction } from "@/app/actions/transactions";
 import { X } from "lucide-react";
 import type { Database } from "@/types/database";
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function TransactionForm({ accounts, categories, editTransaction, onClose }: Props) {
+  const queryClient = useQueryClient();
   const [txType, setTxType] = useState<"income" | "expense">(
     editTransaction?.type === "income" ? "income" : "expense"
   );
@@ -30,7 +32,11 @@ export function TransactionForm({ accounts, categories, editTransaction, onClose
   const [state, formAction, pending] = useActionState(
     async (prev: unknown, formData: FormData) => {
       const result = await action(formData);
-      if (result?.success) onClose();
+      if (result?.success) {
+        queryClient.invalidateQueries({ queryKey: ["transactions"] });
+        queryClient.invalidateQueries({ queryKey: ["monthSpending"] });
+        onClose();
+      }
       return result;
     },
     undefined

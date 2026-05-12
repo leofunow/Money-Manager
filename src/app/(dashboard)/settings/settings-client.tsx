@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createHousehold, createAccount } from "@/app/actions/household";
 import { Plus, Users, CreditCard, User, Copy, Check } from "lucide-react";
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export function SettingsClient({ profile, accounts, members, userEmail, inviteUrl }: Props) {
+  const queryClient = useQueryClient();
   const [showCreateHH, setShowCreateHH] = useState(false);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [pending, setPending] = useState(false);
@@ -43,6 +45,8 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
     const result = await createHousehold(new FormData(e.currentTarget));
     setPending(false);
     if (result?.error) { setError(result.error); return; }
+    queryClient.invalidateQueries({ queryKey: ["profile"] });
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
     setShowCreateHH(false);
     setMsg("Домохозяйство создано!");
   }
@@ -54,6 +58,7 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
     const result = await createAccount(new FormData(e.currentTarget));
     setPending(false);
     if (result?.error) { setError(result.error); return; }
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
     setShowCreateAccount(false);
     setMsg("Счёт добавлен!");
   }

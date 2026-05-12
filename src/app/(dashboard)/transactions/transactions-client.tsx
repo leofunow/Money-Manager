@@ -1,12 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/utils";
 import { Plus, Upload, Search, Trash2, Edit2 } from "lucide-react";
 import { TransactionForm } from "./transaction-form";
 import { PdfImport } from "./pdf-import";
 import { deleteTransaction } from "@/app/actions/transactions";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useProfile,
+  useAccounts,
+  useCategories,
+  useTransactions,
+} from "@/hooks/use-dashboard-data";
 import type { Database } from "@/types/database";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"] & {
@@ -16,20 +24,24 @@ type Transaction = Database["public"]["Tables"]["transactions"]["Row"] & {
 type Account = Database["public"]["Tables"]["accounts"]["Row"];
 type Category = Database["public"]["Tables"]["categories"]["Row"];
 
-interface Props {
-  transactions: Transaction[];
-  accounts: Account[];
-  categories: Category[];
-}
-
-export function TransactionsClient({ transactions, accounts, categories }: Props) {
+export function TransactionsClient() {
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editTx, setEditTx] = useState<Transaction | null>(null);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
 
-  const filtered = transactions.filter((t) => {
+  const { data: profile } = useProfile();
+  const householdId = profile?.household_id ?? null;
+  const { data: accounts = [], isLoading: accountsLoading } = useAccounts(householdId);
+  const accountIds = accounts.map((a) => a.id);
+  const { data: categories = [] } = useCategories(householdId);
+  const { data: transactions = [], isLoading: txLoading } = useTransactions(accountIds);
+
+  const isLoading = !profile || accountsLoading;
+
+  const filtered = (transactions as unknown as Transaction[]).filter((t) => {
     if (typeFilter !== "all" && t.type !== typeFilter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -45,6 +57,8 @@ export function TransactionsClient({ transactions, accounts, categories }: Props
   async function handleDelete(id: string) {
     if (!confirm("Удалить транзакцию?")) return;
     await deleteTransaction(id);
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["monthSpending"] });
   }
 
   return (
@@ -87,9 +101,7 @@ export function TransactionsClient({ transactions, accounts, categories }: Props
               key={v}
               onClick={() => setTypeFilter(v)}
               className={`px-3 py-2 text-sm font-medium transition-colors ${
-                typeFilter === v
-                  ? "bg-primary text-white"
-                  : "text-muted-foreground hover:bg-accent"
+                typeFilter === v ? "bg-primary text-white" : "text-muted-foreground hover:bg-accent"
               }`}
             >
               {v === "all" ? "Все" : v === "expense" ? "Расходы" : "Доходы"}
@@ -101,7 +113,11 @@ export function TransactionsClient({ transactions, accounts, categories }: Props
       {/* Transactions list */}
       <Card>
         <CardContent className="p-0">
-          {!filtered.length ? (
+          {isLoading || txLoading ? (
+            <div className="p-4 space-y-3">
+              {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+            </div>
+          ) : !filtered.length ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
               Транзакций не найдено
             </div>
@@ -125,11 +141,7 @@ export function TransactionsClient({ transactions, accounts, categories }: Props
                       {t.is_shared && " · Общая"}
                     </p>
                   </div>
-                  <span
-                    className={`text-sm font-semibold shrink-0 ${
-                      t.type === "income" ? "text-success" : "text-foreground"
-                    }`}
-                  >
+                  <span className={`text-sm font-semibold shrink-0 ${t.type === "income" ? "text-success" : "text-foreground"}`}>
                     {t.type === "income" ? "+" : "−"}{formatCurrency(Number(t.amount))}
                   </span>
                   <div className="hidden group-hover:flex items-center gap-1">
@@ -153,21 +165,19 @@ export function TransactionsClient({ transactions, accounts, categories }: Props
         </CardContent>
       </Card>
 
-      {/* Transaction Form Modal */}
       {showForm && (
         <TransactionForm
-          accounts={accounts}
-          categories={categories}
+          accounts={accounts as Account[]}
+          categories={categories as Category[]}
           editTransaction={editTx}
           onClose={() => { setShowForm(false); setEditTx(null); }}
         />
       )}
 
-      {/* PDF Import Modal */}
       {showImport && (
         <PdfImport
-          accounts={accounts}
-          categories={categories}
+          accounts={accounts as Account[]}
+          categories={categories as Category[]}
           onClose={() => setShowImport(false)}
         />
       )}

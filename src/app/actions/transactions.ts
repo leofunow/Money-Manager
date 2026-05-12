@@ -118,9 +118,25 @@ export async function bulkImportTransactions(
     currency: "RUB",
   }));
 
+  const { data: existing, error: fetchError } = await supabase
+    .from("transactions")
+    .select("import_hash")
+    .eq("user_id", user.id)
+    .not("import_hash", "is", null);
+
+  if (fetchError) {
+    console.error("[bulkImport] fetch error:", fetchError.message);
+    return { error: `Ошибка при импорте: ${fetchError.message}`, imported: 0 };
+  }
+
+  const existingHashes = new Set(existing?.map((r) => r.import_hash) ?? []);
+  const newRows = rows.filter((r) => !existingHashes.has(r.import_hash));
+
+  if (!newRows.length) return { success: true, imported: 0 };
+
   const { data, error } = await supabase
     .from("transactions")
-    .upsert(rows, { onConflict: "import_hash", ignoreDuplicates: true })
+    .insert(newRows)
     .select("id");
 
   if (error) {

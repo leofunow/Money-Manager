@@ -1,20 +1,29 @@
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { createClient } from "@/lib/supabase/client";
 import { logout } from "@/app/actions/auth";
 import { LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { BellButton } from "./bell-button";
-import type { Database } from "@/types/database";
 
-export async function Header() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+const supabase = createClient();
 
-  const { data: profileData } = user
-    ? await supabase.from("profiles").select("display_name").eq("user_id", user.id).single()
-    : { data: null };
-
-  const profile = profileData as Pick<Database["public"]["Tables"]["profiles"]["Row"], "display_name"> | null;
-  const displayName = profile?.display_name || user?.email?.split("@")[0] || "Пользователь";
+export function Header() {
+  const { data: displayName = "Пользователь" } = useQuery({
+    queryKey: ["headerUser"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return "Пользователь";
+      const { data } = await supabase
+        .from("profiles")
+        .select("display_name")
+        .eq("user_id", user.id)
+        .single();
+      return (data as { display_name: string | null } | null)?.display_name || user.email?.split("@")[0] || "Пользователь";
+    },
+    staleTime: 5 * 60_000,
+  });
 
   return (
     <header className="h-14 border-b bg-card flex items-center justify-between px-4 lg:px-6 shrink-0">
