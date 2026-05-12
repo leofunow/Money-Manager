@@ -103,12 +103,15 @@ export async function updateProfile(formData: FormData) {
   const paydayRaw = formData.get("payday_day");
   const display_name = formData.get("display_name");
 
-  const update: Record<string, unknown> = {};
-  if (display_name !== null) update.display_name = String(display_name).trim() || null;
-  if (paydayRaw !== null) {
-    const day = parseInt(String(paydayRaw), 10);
-    update.payday_day = isNaN(day) || day < 1 || day > 31 ? null : day;
-  }
+  const dayNum = paydayRaw !== null ? parseInt(String(paydayRaw), 10) : undefined;
+  const payday_day = dayNum !== undefined
+    ? (isNaN(dayNum) || dayNum < 1 || dayNum > 31 ? null : dayNum)
+    : undefined;
+
+  const update = {
+    ...(display_name !== null ? { display_name: String(display_name).trim() || null } : {}),
+    ...(payday_day !== undefined ? { payday_day } : {}),
+  };
 
   const { error } = await supabase
     .from("profiles")
