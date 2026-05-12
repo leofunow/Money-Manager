@@ -60,7 +60,7 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="px-3 py-3 border-t">
+      <div className="px-3 py-3 border-t space-y-1">
         <Link
           href="/settings"
           className={cn(
@@ -73,6 +73,9 @@ export function Sidebar() {
           <Settings size={18} />
           Настройки
         </Link>
+        <p className="px-3 text-[10px] text-muted-foreground/50 font-mono">
+          {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHORT_SHA ?? "dev"}
+        </p>
       </div>
     </aside>
   );

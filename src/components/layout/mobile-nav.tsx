@@ -18,6 +18,11 @@ export function MobileNav() {
 
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t safe-area-pb">
+      <div className="text-center py-0.5">
+        <span className="text-[9px] text-muted-foreground/40 font-mono">
+          {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHORT_SHA ?? "dev"}
+        </span>
+      </div>
       <div className="flex">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
