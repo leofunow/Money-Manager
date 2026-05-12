@@ -97,7 +97,7 @@ export function useBudgets(householdId: string | null | undefined) {
   });
 }
 
-// ─── Month spending ───────────────────────────────────────────────────────────
+// ─── Month spending (calendar month, used for budgets) ────────────────────────
 
 export function useMonthSpending(accountIds: string[]) {
   const { start, end } = getMonthBounds();
@@ -114,6 +114,31 @@ export function useMonthSpending(accountIds: string[]) {
         .in("account_id", accountIds)
         .gte("date", startStr)
         .lte("date", endStr);
+      return data ?? [];
+    },
+    staleTime: 60_000,
+  });
+}
+
+// ─── Last 30 days spending (used for dashboard summary cards) ─────────────────
+
+export function useLast30DaysSpending(accountIds: string[]) {
+  const today = new Date();
+  const from = new Date(today);
+  from.setDate(from.getDate() - 29);
+  const fromStr = from.toISOString().split("T")[0];
+  const toStr = today.toISOString().split("T")[0];
+
+  return useQuery({
+    queryKey: ["last30days", accountIds, fromStr],
+    enabled: accountIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("transactions")
+        .select("category_id, amount, type")
+        .in("account_id", accountIds)
+        .gte("date", fromStr)
+        .lte("date", toStr);
       return data ?? [];
     },
     staleTime: 60_000,

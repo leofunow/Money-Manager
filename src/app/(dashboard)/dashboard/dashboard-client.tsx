@@ -1,6 +1,6 @@
 "use client";
 
-import { formatCurrency, daysLeftInMonth } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +12,7 @@ import {
   useBudgets,
   useGoals,
   useTransactions,
-  useMonthSpending,
+  useLast30DaysSpending,
 } from "@/hooks/use-dashboard-data";
 
 export function DashboardClient() {
@@ -22,7 +22,7 @@ export function DashboardClient() {
   const { data: accounts = [], isLoading: accountsLoading } = useAccounts(householdId);
   const accountIds = accounts.map((a) => a.id);
 
-  const { data: monthTxns = [], isLoading: monthLoading } = useMonthSpending(accountIds);
+  const { data: monthTxns = [], isLoading: monthLoading } = useLast30DaysSpending(accountIds);
   const { data: budgets = [], isLoading: budgetsLoading } = useBudgets(householdId);
   const { data: goals = [], isLoading: goalsLoading } = useGoals(householdId);
   const { data: recentTxns = [], isLoading: recentLoading } = useTransactions(accountIds);
@@ -63,9 +63,7 @@ export function DashboardClient() {
       return acc;
     }, {});
 
-  const daysLeft = daysLeftInMonth();
-  const dailyBurn = expenses / (new Date().getDate() || 1);
-  const forecast = expenses + dailyBurn * daysLeft;
+  const dailyAvg = expenses / 30;
 
   const top5Recent = (recentTxns as unknown as Array<{
     id: string; amount: number; type: string; date: string;
@@ -77,9 +75,7 @@ export function DashboardClient() {
     <div className="p-4 lg:p-6 space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Дашборд</h1>
-        <p className="text-sm text-muted-foreground">
-          {new Date().toLocaleDateString("ru-RU", { month: "long", year: "numeric" })}
-        </p>
+        <p className="text-sm text-muted-foreground">последние 30 дней</p>
       </div>
 
       {/* Key metrics */}
@@ -100,6 +96,7 @@ export function DashboardClient() {
               <TrendingDown size={16} className="text-destructive" />
             </div>
             <p className="text-2xl font-bold text-destructive">{formatCurrency(expenses)}</p>
+            <p className="text-xs text-muted-foreground mt-1">за 30 дней</p>
           </CardContent>
         </Card>
         <Card>
@@ -109,16 +106,17 @@ export function DashboardClient() {
               <TrendingUp size={16} className="text-success" />
             </div>
             <p className="text-2xl font-bold text-success">{formatCurrency(income)}</p>
+            <p className="text-xs text-muted-foreground mt-1">за 30 дней</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Прогноз</span>
-              <span className="text-xs text-muted-foreground">{daysLeft}д</span>
+              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">В день</span>
+              <span className="text-xs text-muted-foreground">avg</span>
             </div>
-            <p className="text-2xl font-bold text-warning">{formatCurrency(forecast)}</p>
-            <p className="text-xs text-muted-foreground mt-1">к концу месяца</p>
+            <p className="text-2xl font-bold text-warning">{formatCurrency(dailyAvg)}</p>
+            <p className="text-xs text-muted-foreground mt-1">средний расход</p>
           </CardContent>
         </Card>
       </div>
