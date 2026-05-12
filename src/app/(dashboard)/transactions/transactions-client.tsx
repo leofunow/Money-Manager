@@ -59,6 +59,7 @@ export function TransactionsClient() {
     await deleteTransaction(id);
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["monthSpending"] });
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
   }
 
   return (

@@ -114,6 +114,7 @@ export function PdfImport({ accounts, categories, onClose }: Props) {
     setImportedCount(result.imported ?? 0);
     queryClient.invalidateQueries({ queryKey: ["transactions"] });
     queryClient.invalidateQueries({ queryKey: ["monthSpending"] });
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
     setState("done");
   }
 

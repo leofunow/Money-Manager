@@ -43,6 +43,7 @@ export interface Database {
           avatar_url: string | null;
           household_id: string | null;
           currency: string;
+          payday_day: number | null;
           created_at: string;
         };
         Insert: {
@@ -52,12 +53,14 @@ export interface Database {
           avatar_url?: string | null;
           household_id?: string | null;
           currency?: string;
+          payday_day?: number | null;
         };
         Update: {
           display_name?: string | null;
           avatar_url?: string | null;
           household_id?: string | null;
           currency?: string;
+          payday_day?: number | null;
         };
         Relationships: Rel[];
       };
@@ -133,6 +136,7 @@ export interface Database {
           date: string;
           type: "income" | "expense" | "transfer";
           is_shared: boolean;
+          is_planned: boolean;
           import_source: "manual" | "csv" | "pdf";
           import_hash: string | null;
           created_at: string;
@@ -149,6 +153,7 @@ export interface Database {
           date: string;
           type?: "income" | "expense" | "transfer";
           is_shared?: boolean;
+          is_planned?: boolean;
           import_source?: "manual" | "csv" | "pdf";
           import_hash?: string | null;
         };
@@ -160,6 +165,7 @@ export interface Database {
           date?: string;
           type?: "income" | "expense" | "transfer";
           is_shared?: boolean;
+          is_planned?: boolean;
         };
         Relationships: Rel[];
       };

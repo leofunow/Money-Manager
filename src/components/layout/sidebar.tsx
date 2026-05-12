@@ -74,7 +74,7 @@ export function Sidebar() {
           Настройки
         </Link>
         <p className="px-3 text-[10px] text-muted-foreground/50 font-mono">
-          {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHORT_SHA ?? "dev"}
+          {process.env.NEXT_PUBLIC_BUILD_ID ?? "dev"}
         </p>
       </div>
     </aside>

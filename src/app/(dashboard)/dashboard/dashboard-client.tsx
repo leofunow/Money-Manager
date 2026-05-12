@@ -4,7 +4,7 @@ import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingDown, TrendingUp, Wallet, ArrowRight } from "lucide-react";
+import { TrendingDown, TrendingUp, Wallet, ArrowRight, CalendarClock, Clock } from "lucide-react";
 import Link from "next/link";
 import {
   useProfile,
@@ -14,6 +14,21 @@ import {
   useTransactions,
   useLast30DaysSpending,
 } from "@/hooks/use-dashboard-data";
+
+function getDaysUntilPayday(paydayDay: number): number {
+  const today = new Date();
+  const day = today.getDate();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+
+  if (paydayDay >= day) {
+    return paydayDay - day;
+  }
+  // Payday already passed — count to next month's payday
+  const nextPayday = new Date(year, month + 1, paydayDay);
+  const diff = Math.ceil((nextPayday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return diff;
+}
 
 export function DashboardClient() {
   const { data: profile, isLoading: profileLoading } = useProfile();
@@ -65,11 +80,20 @@ export function DashboardClient() {
 
   const dailyAvg = expenses / 30;
 
-  const top5Recent = (recentTxns as unknown as Array<{
+  type TxRow = {
     id: string; amount: number; type: string; date: string;
     description: string; merchant_name: string | null;
+    is_planned?: boolean;
     category: { name: string; color: string; icon: string | null } | null;
-  }>).slice(0, 5);
+  };
+
+  const typedTxns = recentTxns as unknown as TxRow[];
+  const top5Recent = typedTxns.filter((t) => !t.is_planned).slice(0, 5);
+  const plannedTxns = typedTxns.filter((t) => t.is_planned).slice(0, 5);
+  const plannedTotal = plannedTxns.reduce((s, t) => s + Number(t.amount), 0);
+
+  const paydayDay = (profile as { payday_day?: number | null })?.payday_day ?? null;
+  const daysUntilPayday = paydayDay !== null ? getDaysUntilPayday(paydayDay) : null;
 
   return (
     <div className="p-4 lg:p-6 space-y-6 max-w-6xl mx-auto">
@@ -120,6 +144,38 @@ export function DashboardClient() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payday + Planned banners */}
+      {(daysUntilPayday !== null || (plannedTxns.length > 0 && !recentLoading)) && (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {daysUntilPayday !== null && (
+            <div className="flex items-center gap-4 p-4 rounded-xl bg-primary/5 border border-primary/10">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <CalendarClock size={20} className="text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {daysUntilPayday === 0 ? "Сегодня зарплата!" : `Зарплата через ${daysUntilPayday} ${daysWord(daysUntilPayday)}`}
+                </p>
+                <p className="text-xs text-muted-foreground">{paydayDay}-го числа каждого месяца</p>
+              </div>
+            </div>
+          )}
+          {plannedTxns.length > 0 && !recentLoading && (
+            <div className="flex items-center gap-4 p-4 rounded-xl bg-warning/5 border border-warning/10">
+              <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
+                <Clock size={20} className="text-warning" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Запланировано {formatCurrency(plannedTotal)}
+                </p>
+                <p className="text-xs text-muted-foreground">{plannedTxns.length} запланированных трат</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Budgets */}
@@ -207,6 +263,42 @@ export function DashboardClient() {
         </Card>
       </div>
 
+      {/* Planned transactions */}
+      {!recentLoading && plannedTxns.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Clock size={16} className="text-warning" /> Запланировано
+            </CardTitle>
+            <Link href="/transactions" className="text-xs text-primary hover:underline">Все</Link>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y">
+              {plannedTxns.map((t) => (
+                <div key={t.id} className="py-3 flex items-center gap-3">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0"
+                    style={{ backgroundColor: `${t.category?.color ?? "#94a3b8"}20` }}
+                  >
+                    {t.category?.icon ?? "📋"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{t.merchant_name || t.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t.category?.name ?? "Без категории"} ·{" "}
+                      {new Date(t.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold shrink-0 text-warning">
+                    −{formatCurrency(Number(t.amount))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Recent transactions */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
@@ -251,6 +343,14 @@ export function DashboardClient() {
       </Card>
     </div>
   );
+}
+
+function daysWord(n: number): string {
+  if (n % 100 >= 11 && n % 100 <= 19) return "дней";
+  const r = n % 10;
+  if (r === 1) return "день";
+  if (r >= 2 && r <= 4) return "дня";
+  return "дней";
 }
 
 function DashboardSkeleton() {

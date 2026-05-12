@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { createHousehold, createAccount } from "@/app/actions/household";
-import { Plus, Users, CreditCard, User, Copy, Check } from "lucide-react";
+import { createHousehold, createAccount, updateAccount, deleteAccount, updateProfile } from "@/app/actions/household";
+import { Plus, Users, CreditCard, User, Copy, Check, Pencil, Trash2, Calendar } from "lucide-react";
 import type { Database } from "@/types/database";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"] & {
@@ -21,9 +21,10 @@ interface Props {
 }
 
 export function SettingsClient({ profile, accounts, members, userEmail, inviteUrl }: Props) {
-  const queryClient = useQueryClient();
+  const router = useRouter();
   const [showCreateHH, setShowCreateHH] = useState(false);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -45,10 +46,9 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
     const result = await createHousehold(new FormData(e.currentTarget));
     setPending(false);
     if (result?.error) { setError(result.error); return; }
-    queryClient.invalidateQueries({ queryKey: ["profile"] });
-    queryClient.invalidateQueries({ queryKey: ["accounts"] });
     setShowCreateHH(false);
     setMsg("Домохозяйство создано!");
+    router.refresh();
   }
 
   async function handleCreateAccount(e: React.FormEvent<HTMLFormElement>) {
@@ -58,9 +58,43 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
     const result = await createAccount(new FormData(e.currentTarget));
     setPending(false);
     if (result?.error) { setError(result.error); return; }
-    queryClient.invalidateQueries({ queryKey: ["accounts"] });
     setShowCreateAccount(false);
     setMsg("Счёт добавлен!");
+    router.refresh();
+  }
+
+  async function handleUpdateAccount(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingAccount) return;
+    setPending(true);
+    setError(null);
+    const result = await updateAccount(editingAccount.id, new FormData(e.currentTarget));
+    setPending(false);
+    if (result?.error) { setError(result.error); return; }
+    setEditingAccount(null);
+    setMsg("Счёт обновлён!");
+    router.refresh();
+  }
+
+  async function handleDeleteAccount(id: string) {
+    if (!confirm("Удалить счёт? Транзакции останутся.")) return;
+    setPending(true);
+    const result = await deleteAccount(id);
+    setPending(false);
+    if (result?.error) { setMsg(result.error); return; }
+    setMsg("Счёт удалён.");
+    router.refresh();
+  }
+
+  async function handleUpdateProfile(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setPending(true);
+    setError(null);
+    const result = await updateProfile(new FormData(e.currentTarget));
+    setPending(false);
+    if (result?.error) { setError(result.error); return; }
+    setMsg("Профиль обновлён!");
+    router.refresh();
   }
 
   return (
@@ -80,7 +114,7 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
             <User size={16} /> Профиль
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-lg">
               {(profile?.display_name ?? userEmail).charAt(0).toUpperCase()}
@@ -90,6 +124,42 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
               <p className="text-sm text-muted-foreground">{userEmail}</p>
             </div>
           </div>
+          <form onSubmit={handleUpdateProfile} className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-foreground">Имя</label>
+              <input
+                name="display_name"
+                defaultValue={profile?.display_name ?? ""}
+                placeholder="Иван Иванов"
+                className="w-full px-3 py-2 rounded-lg border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                <Calendar size={14} /> День зарплаты
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  name="payday_day"
+                  type="number"
+                  min="1"
+                  max="31"
+                  defaultValue={profile?.payday_day ?? ""}
+                  placeholder="25"
+                  className="w-24 px-3 py-2 rounded-lg border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <span className="text-sm text-muted-foreground">число каждого месяца</span>
+              </div>
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <button
+              type="submit"
+              disabled={pending}
+              className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+            >
+              {pending ? "Сохраняем..." : "Сохранить"}
+            </button>
+          </form>
         </CardContent>
       </Card>
 
@@ -169,16 +239,31 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
             ) : (
               <div className="divide-y">
                 {accounts.map((a) => (
-                  <div key={a.id} className="py-2.5 flex items-center justify-between">
-                    <div>
+                  <div key={a.id} className="py-2.5 flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">{a.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {a.type === "personal" ? "Личный" : "Общий"} · {a.currency}
                       </p>
                     </div>
-                    <p className="text-sm font-medium text-foreground">
+                    <p className="text-sm font-medium text-foreground shrink-0">
                       {Number(a.balance).toLocaleString("ru-RU")} ₽
                     </p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => { setEditingAccount(a); setError(null); }}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteAccount(a.id)}
+                        disabled={pending}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -235,6 +320,35 @@ export function SettingsClient({ profile, accounts, members, userEmail, inviteUr
                 <button type="button" onClick={() => setShowCreateAccount(false)} className="flex-1 py-2.5 rounded-xl border text-sm font-medium hover:bg-accent transition-colors">Отмена</button>
                 <button type="submit" disabled={pending} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors">
                   {pending ? "Добавляем..." : "Добавить"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Account Modal */}
+      {editingAccount && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md p-5">
+            <h2 className="font-semibold text-foreground mb-4">Редактировать счёт</h2>
+            {error && <div className="mb-4 text-destructive text-sm bg-destructive/10 rounded-lg p-3">{error}</div>}
+            <form onSubmit={handleUpdateAccount} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-foreground">Название счёта</label>
+                <input name="name" required defaultValue={editingAccount.name} className="w-full px-3 py-2.5 rounded-lg border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-foreground">Тип</label>
+                <select name="type" defaultValue={editingAccount.type} className="w-full px-3 py-2.5 rounded-lg border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50">
+                  <option value="personal">Личный</option>
+                  <option value="shared">Общий (семейный)</option>
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setEditingAccount(null)} className="flex-1 py-2.5 rounded-xl border text-sm font-medium hover:bg-accent transition-colors">Отмена</button>
+                <button type="submit" disabled={pending} className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors">
+                  {pending ? "Сохраняем..." : "Сохранить"}
                 </button>
               </div>
             </form>

@@ -35,6 +35,7 @@ export function TransactionForm({ accounts, categories, editTransaction, onClose
       if (result?.success) {
         queryClient.invalidateQueries({ queryKey: ["transactions"] });
         queryClient.invalidateQueries({ queryKey: ["monthSpending"] });
+        queryClient.invalidateQueries({ queryKey: ["accounts"] });
         onClose();
       }
       return result;
@@ -166,6 +167,18 @@ export function TransactionForm({ accounts, categories, editTransaction, onClose
               className="w-4 h-4 rounded accent-primary"
             />
             <span className="text-sm text-foreground">Общая семейная трата</span>
+          </label>
+
+          {/* Is planned */}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              name="is_planned"
+              type="checkbox"
+              value="true"
+              defaultChecked={(editTransaction as { is_planned?: boolean } | null | undefined)?.is_planned ?? false}
+              className="w-4 h-4 rounded accent-primary"
+            />
+            <span className="text-sm text-foreground">Запланированная трата</span>
           </label>
 
           <button

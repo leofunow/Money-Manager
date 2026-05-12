@@ -7,8 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Plus, Trash2, PlusCircle } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createGoal, addToGoal, deleteGoal } from "@/app/actions/goals";
-import { useProfile, useGoals } from "@/hooks/use-dashboard-data";
+import { createGoal, addToGoalWithTransaction, deleteGoal } from "@/app/actions/goals";
+import { useProfile, useGoals, useAccounts } from "@/hooks/use-dashboard-data";
 import type { Database } from "@/types/database";
 
 type Goal = Database["public"]["Tables"]["goals"]["Row"];
@@ -20,10 +20,13 @@ export function GoalsClient() {
   const [showForm, setShowForm] = useState(false);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [addAmount, setAddAmount] = useState("");
+  const [addAccountId, setAddAccountId] = useState("");
   const [pending, setPending] = useState(false);
 
   const { data: profile } = useProfile();
-  const { data: goals = [], isLoading } = useGoals(profile?.household_id ?? null);
+  const householdId = profile?.household_id ?? null;
+  const { data: goals = [], isLoading } = useGoals(householdId);
+  const { data: accounts = [] } = useAccounts(householdId);
 
   async function handleCreateGoal(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -39,18 +42,31 @@ export function GoalsClient() {
   async function handleAddFunds(goalId: string) {
     const amount = parseFloat(addAmount);
     if (isNaN(amount) || amount <= 0) return;
+    const accountId = addAccountId || accounts[0]?.id;
+    if (!accountId) return;
     setPending(true);
-    await addToGoal(goalId, amount);
+    const result = await addToGoalWithTransaction(goalId, amount, accountId);
     queryClient.invalidateQueries({ queryKey: ["goals"] });
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
     setPending(false);
-    setAddingTo(null);
-    setAddAmount("");
+    if (result?.success) {
+      setAddingTo(null);
+      setAddAmount("");
+      if (result.completed) alert("Цель достигнута! 🎉");
+    }
   }
 
   async function handleDelete(id: string) {
     if (!confirm("Удалить цель?")) return;
     await deleteGoal(id);
     queryClient.invalidateQueries({ queryKey: ["goals"] });
+  }
+
+  function openAddFunds(goalId: string) {
+    setAddingTo(goalId);
+    setAddAmount("");
+    setAddAccountId(accounts[0]?.id ?? "");
   }
 
   const typedGoals = goals as Goal[];
@@ -121,23 +137,40 @@ export function GoalsClient() {
                       </div>
 
                       {addingTo === g.id ? (
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            value={addAmount}
-                            onChange={(e) => setAddAmount(e.target.value)}
-                            placeholder="Сумма"
-                            className="flex-1 px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                          />
-                          <button onClick={() => handleAddFunds(g.id)} disabled={pending} className="px-4 py-2 rounded-lg bg-success text-white text-sm font-medium hover:bg-success/90 disabled:opacity-60 transition-colors">+</button>
-                          <button onClick={() => { setAddingTo(null); setAddAmount(""); }} className="px-3 py-2 rounded-lg border text-sm hover:bg-accent transition-colors">✕</button>
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              value={addAmount}
+                              onChange={(e) => setAddAmount(e.target.value)}
+                              placeholder="Сумма"
+                              className="flex-1 px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            />
+                          </div>
+                          {accounts.length > 1 && (
+                            <select
+                              value={addAccountId}
+                              onChange={(e) => setAddAccountId(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                            >
+                              {accounts.map((a) => (
+                                <option key={a.id} value={a.id}>{a.name}</option>
+                              ))}
+                            </select>
+                          )}
+                          <div className="flex gap-2">
+                            <button onClick={() => handleAddFunds(g.id)} disabled={pending} className="flex-1 px-4 py-2 rounded-lg bg-success text-white text-sm font-medium hover:bg-success/90 disabled:opacity-60 transition-colors">
+                              {pending ? "..." : "Отложить"}
+                            </button>
+                            <button onClick={() => { setAddingTo(null); setAddAmount(""); }} className="px-3 py-2 rounded-lg border text-sm hover:bg-accent transition-colors">✕</button>
+                          </div>
                         </div>
                       ) : (
                         <button
-                          onClick={() => setAddingTo(g.id)}
+                          onClick={() => openAddFunds(g.id)}
                           className="w-full py-2 rounded-lg border border-success/30 text-success text-sm font-medium hover:bg-success/10 transition-colors flex items-center justify-center gap-2"
                         >
-                          <PlusCircle size={15} /> Пополнить
+                          <PlusCircle size={15} /> Отложить на цель
                         </button>
                       )}
                     </CardContent>
