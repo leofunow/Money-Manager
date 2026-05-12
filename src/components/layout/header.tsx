@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { logout } from "@/app/actions/auth";
-import { Bell, LogOut, User } from "lucide-react";
+import { LogOut, User } from "lucide-react";
+import Link from "next/link";
+import { BellButton } from "./bell-button";
 import type { Database } from "@/types/database";
 
 export async function Header() {
@@ -23,16 +25,14 @@ export async function Header() {
       <div className="hidden lg:block" />
 
       <div className="flex items-center gap-2">
-        <button className="p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" aria-label="Уведомления">
-          <Bell size={18} />
-        </button>
+        <BellButton />
 
-        <div className="flex items-center gap-2 pl-2 border-l">
+        <Link href="/settings" className="flex items-center gap-2 pl-2 border-l hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
             <User size={16} />
           </div>
           <span className="hidden sm:block text-sm font-medium text-foreground max-w-32 truncate">{displayName}</span>
-        </div>
+        </Link>
 
         <form action={logout}>
           <button type="submit" className="p-2 rounded-lg text-muted-foreground hover:bg-accent hover:text-destructive transition-colors" aria-label="Выйти">

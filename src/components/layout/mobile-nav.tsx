@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ArrowLeftRight, PieChart, Target, BarChart3 } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, PieChart, Target, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -10,7 +10,7 @@ const nav = [
   { href: "/transactions", label: "Расходы", icon: ArrowLeftRight },
   { href: "/budgets", label: "Бюджеты", icon: PieChart },
   { href: "/goals", label: "Цели", icon: Target },
-  { href: "/analytics", label: "Анализ", icon: BarChart3 },
+  { href: "/settings", label: "Настройки", icon: Settings },
 ];
 
 export function MobileNav() {

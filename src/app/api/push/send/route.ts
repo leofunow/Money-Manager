@@ -3,11 +3,13 @@ import webpush from "web-push";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 
-if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+const vapidPublic = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
+if (vapidPublic && vapidPrivate) {
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT ?? "mailto:admin@finfamily.app",
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
+    vapidPublic,
+    vapidPrivate
   );
 }
 
