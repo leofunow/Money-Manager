@@ -30,11 +30,18 @@ export async function POST(request: NextRequest) {
   if (unknowns.length && apiKey) {
     try {
       const categoryList = categories.map((c) => c.name).join(", ");
-      const prompt = `Categorize the following Russian merchant/transaction names into one of these expense or income categories: ${categoryList}.
+      const prompt = `You are categorizing Russian bank transactions. Merchant names may be in Russian or Latin transliteration (e.g. "PYATEROCHKA" = Пятёрочка grocery store, "YA.TAXI" = Яндекс Такси).
 
-Respond ONLY with a JSON object mapping each merchant name to the most fitting category name. If none fit, use null.
+Available categories: ${categoryList}
 
-Merchants: ${JSON.stringify(unknowns)}`;
+Rules:
+- Use EXACTLY the category name as written above (copy it character for character)
+- If no category fits, use null
+- Common patterns: PYATEROCHKA/MAGNIT/LENTA = "Еда и продукты", YA.TAXI/UBER = "Транспорт", WILDBERRIES/OZON = "Одежда"
+
+Respond ONLY with a JSON object: { "merchant name": "category name or null" }
+
+Merchants to categorize: ${JSON.stringify(unknowns)}`;
 
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
