@@ -1,14 +1,34 @@
 "use client";
 
 import { useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { register } from "@/app/actions/auth";
 
 export default function RegisterPage() {
   const [state, action, pending] = useActionState(register, undefined);
+  const searchParams = useSearchParams();
+  const token = searchParams.get("invite") ?? "";
+
+  if (!token) {
+    return (
+      <div className="text-center space-y-3">
+        <div className="text-4xl">🔒</div>
+        <h2 className="text-xl font-semibold text-foreground">Регистрация закрыта</h2>
+        <p className="text-sm text-muted-foreground">
+          Для регистрации нужна ссылка-приглашение от администратора.
+        </p>
+        <Link href="/login" className="block text-sm text-primary hover:underline mt-2">
+          Войти в аккаунт
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <form action={action} className="space-y-5">
+      <input type="hidden" name="invite_token" value={token} />
+
       <div>
         <h2 className="text-xl font-semibold text-foreground">Создать аккаунт</h2>
         <p className="text-sm text-muted-foreground mt-1">Начните управлять семейным бюджетом</p>

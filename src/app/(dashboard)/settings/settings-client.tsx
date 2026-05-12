@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createHousehold, createAccount } from "@/app/actions/household";
-import { Plus, Users, CreditCard, User } from "lucide-react";
+import { Plus, Users, CreditCard, User, Copy, Check } from "lucide-react";
 import type { Database } from "@/types/database";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"] & {
@@ -16,14 +16,23 @@ interface Props {
   accounts: Account[];
   members: Array<{ role: string; profile?: { display_name: string | null } | null }>;
   userEmail: string;
+  inviteUrl?: string;
 }
 
-export function SettingsClient({ profile, accounts, members, userEmail }: Props) {
+export function SettingsClient({ profile, accounts, members, userEmail, inviteUrl }: Props) {
   const [showCreateHH, setShowCreateHH] = useState(false);
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function copyInvite() {
+    if (!inviteUrl) return;
+    navigator.clipboard.writeText(inviteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   const household = profile?.household;
 
@@ -121,9 +130,15 @@ export function SettingsClient({ profile, accounts, members, userEmail }: Props)
                   ))}
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">
-                Пригласить участников можно отправив им ссылку на регистрацию (функция скоро)
-              </p>
+              {inviteUrl && (
+                <button
+                  onClick={copyInvite}
+                  className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border hover:bg-accent transition-colors w-full"
+                >
+                  {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+                  {copied ? "Ссылка скопирована!" : "Скопировать ссылку-приглашение"}
+                </button>
+              )}
             </div>
           )}
         </CardContent>

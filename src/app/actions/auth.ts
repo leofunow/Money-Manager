@@ -34,6 +34,11 @@ export async function login(_prevState: unknown, formData: FormData) {
 export async function register(_prevState: unknown, formData: FormData) {
   const supabase = await createClient();
 
+  const invite = formData.get("invite_token");
+  if (!invite || invite !== process.env.INVITE_SECRET) {
+    return { error: "Регистрация только по приглашению" };
+  }
+
   const parsed = registerSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
