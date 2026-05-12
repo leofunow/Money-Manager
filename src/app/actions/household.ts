@@ -12,41 +12,8 @@ export async function createHousehold(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Укажите название" };
 
-  // Create household
-  const { data: household, error: hhErr } = await supabase
-    .from("households")
-    .insert({ name })
-    .select()
-    .single();
-
-  if (hhErr || !household) return { error: "Ошибка создания домохозяйства" };
-
-  // Link profile
-  const { error: profileErr } = await supabase
-    .from("profiles")
-    .update({ household_id: household.id })
-    .eq("user_id", user.id);
-
-  if (profileErr) return { error: "Ошибка обновления профиля" };
-
-  // Add as admin member
-  await supabase.from("household_members").insert({
-    household_id: household.id,
-    user_id: user.id,
-    role: "admin",
-  });
-
-  // Seed default categories
-  await supabase.rpc("seed_default_categories", { p_household_id: household.id });
-
-  // Create default account
-  await supabase.from("accounts").insert({
-    household_id: household.id,
-    user_id: user.id,
-    name: "Основная карта",
-    type: "personal",
-    currency: "RUB",
-  });
+  const { error } = await supabase.rpc("create_household_for_user", { p_name: name });
+  if (error) return { error: "Ошибка создания домохозяйства" };
 
   revalidatePath("/dashboard");
   revalidatePath("/settings");
