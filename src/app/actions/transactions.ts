@@ -120,10 +120,13 @@ export async function bulkImportTransactions(
 
   const { data, error } = await supabase
     .from("transactions")
-    .upsert(rows, { onConflict: "account_id,import_hash", ignoreDuplicates: true })
+    .upsert(rows, { onConflict: "import_hash", ignoreDuplicates: true })
     .select("id");
 
-  if (error) return { error: "Ошибка при импорте", imported: 0 };
+  if (error) {
+    console.error("[bulkImport] Supabase error:", error.message, error.code);
+    return { error: `Ошибка при импорте: ${error.message}`, imported: 0 };
+  }
   revalidatePath("/transactions");
   revalidatePath("/dashboard");
   return { success: true, imported: data?.length ?? 0 };
