@@ -270,6 +270,10 @@ export interface Database {
         Args: { uid: string };
         Returns: string;
       };
+      create_household_for_user: {
+        Args: { p_name: string };
+        Returns: string;
+      };
     };
     Enums: Record<string, never>;
   };
