@@ -11,7 +11,7 @@ const RULES: Array<{ keywords: RegExp; category: string }> = [
   },
   // Transport
   {
-    keywords: /яндекс.?такси|yandex.?taxi|ya\.taxi|uber|ситимобил|citymobil|gett|такси|taxi|метрополит|metro(?!.?cash)|мцк|мцд|электричк|аэроэкспресс|transcard|транскарт|тройка|troika|russpass|ряд.?авто|rzd|ржд|аэрофлот|aeroflot|s7\.ru|rossiya|utair|pobeda|pegas|pegast|ural.?air/i,
+    keywords: /яндекс.?такси|yandex.?taxi|ya\.taxi|uber|ситимобил|citymobil|gett|такси|taxi|метрополит|metro(?!.?cash)|мцк|мцд|электричк|аэроэкспресс|transcard|транскарт|тройка|troika|russpass|ряд.?авто|rzd|ржд|аэрофлот|aeroflot|s7\.ru|rossiya|utair|pobeda|pegas|pegast|ural.?air|ж\.?д|жд.?билет|железнодор|railway|train/i,
     category: "Транспорт",
   },
   // Utilities & Communication
